@@ -332,7 +332,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Failed to add student.'),
+          content: Text('Failed to add student'),
         ),
       );
     } finally {
@@ -368,7 +368,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Delete request failed.'),
+            content: Text('Delete request failed'),
           ),
         );
       }
@@ -377,7 +377,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Unable to delete student.'),
+          content: Text('Unable to delete student'),
         ),
       );
     }
