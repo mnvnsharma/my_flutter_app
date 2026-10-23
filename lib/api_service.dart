@@ -139,4 +139,34 @@ class ApiService {
 
     return response.statusCode == 200;
   }
+
+  static Future<Map<String, dynamic>> updateStudent(
+    int id,
+    String name,
+    String grade,
+  ) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/users/$id'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'firstName': name,
+        // Include the grade field expected by your API.
+      }),
+    );
+
+    // debugPrint('update HTTP status: ${response.statusCode}');
+    //   debugPrint('update student ID: $id');
+    // debugPrint('update HTTP status: ${response.statusCode}');
+    // debugPrint('update response: ${response.body}');
+    debugPrint('update response3: ${response}');
+
+    if ((response.statusCode >= 200 && response.statusCode < 300) || response.statusCode == 404 ) {
+      return jsonDecode(response.body)
+          as Map<String, dynamic>;
+    }
+
+    throw Exception('Failed to update student');
+  }
 }

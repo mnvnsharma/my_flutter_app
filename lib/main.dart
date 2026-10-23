@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'api_service.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:typed_data';
 
 void main() {
   runApp(const StudentApp());
@@ -195,15 +198,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
 // ---------------- STUDENT MODEL ----------------
 
-class Student {
+
+
+ class Student {
   final int id;
   final String name;
   final String grade;
+  final String? imagePath;
 
   Student({
     required this.id,
     required this.name,
     required this.grade,
+    this.imagePath,
   });
 
   factory Student.fromJson(Map<String, dynamic> json) {
@@ -236,10 +243,42 @@ class _StudentListScreenState extends State<StudentListScreen> {
       TextEditingController();
   final TextEditingController _gradeController =
       TextEditingController();
+      int? _editingStudentId;
 
   bool _isLoading = false;
   bool _isSaving = false;
   String? _errorMessage;
+
+  File? _studentImage;
+  Uint8List? _studentImageBytes;
+  String? _studentImagePath;
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        imageQuality: 80,
+      );
+
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+
+        if (!mounted) return;
+
+        setState(() {
+          _studentImageBytes = bytes;
+          _studentImagePath = image.path;
+        });
+      }
+      } catch (e) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to select image: $e')),
+        );
+      }
+    }
   
   @override
   void initState() {
@@ -285,6 +324,26 @@ class _StudentListScreenState extends State<StudentListScreen> {
   }
 }
 
+void _editStudent(Student student) {
+    setState(() {
+      _editingStudentId = student.id;
+
+      _nameController.text = student.name;
+      _gradeController.text = student.grade;
+
+      // Load the existing image if it is available locally.
+      _studentImagePath = student.imagePath;
+      _studentImageBytes = null;
+      _studentImage = null;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Edit the student details and tap Update Student.'),
+      ),
+    );
+  }
+
   // POST: Add a student through the test API
   Future<void> _addStudent() async {
     final name = _nameController.text.trim();
@@ -310,7 +369,13 @@ class _StudentListScreenState extends State<StudentListScreen> {
 
       // DummyJSON simulates adding; preserve the result locally
       // so the new student appears on this screen.
-      final student = Student.fromJson(result);
+      // final student = Student.fromJson(result);
+      final student = Student(
+        id: (result['id'] as num).toInt(),
+        name: name,
+        grade: grade,
+        imagePath: _studentImagePath,
+      );
 
       setState(() {
         _students.insert(0, student);
@@ -318,6 +383,9 @@ class _StudentListScreenState extends State<StudentListScreen> {
 
       _nameController.clear();
       _gradeController.clear();
+      setState(() {
+        _studentImageBytes  = null;
+      });
       FocusScope.of(context).unfocus();
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -344,6 +412,86 @@ class _StudentListScreenState extends State<StudentListScreen> {
     }
   }
 
+
+  
+
+  Future<void> _updateStudent() async {
+    final studentId = _editingStudentId;
+    if (studentId == null) return;
+
+    final name = _nameController.text.trim();
+    final grade = _gradeController.text.trim();
+
+    if (name.isEmpty || grade.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter student name and grade.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final result = await ApiService.updateStudent(
+        studentId,
+        name,
+        grade,
+      );
+       debugPrint('update result: $result');
+      if (!mounted) return;
+
+      // Update the local list after the API request succeeds.
+      final index = _students.indexWhere(
+        (student) => student.id == studentId,
+      );
+
+      if (index != -1) {
+        setState(() {
+          _students[index] = Student(
+            id: studentId,
+            name: name,
+            grade: grade,
+            imagePath: _studentImagePath,
+          );
+
+          _editingStudentId = null;
+          _studentImage = null;
+          _studentImageBytes = null;
+          _studentImagePath = null;
+        });
+      }
+
+      _nameController.clear();
+      _gradeController.clear();
+      FocusScope.of(context).unfocus();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Student updated successfully in the current list.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to update student: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
   // DELETE: Send delete request and remove from current UI
   Future<void> _deleteStudent(int index) async {
     final student = _students[index];
@@ -434,9 +582,74 @@ class _StudentListScreenState extends State<StudentListScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    if (_studentImageBytes  == null)
+                    Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () => _pickImage(ImageSource.camera),
+                        icon: const Icon(Icons.camera_alt),
+                        label: const Text('Take Photo'),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        onPressed: () => _pickImage(ImageSource.gallery),
+                        icon: const Icon(Icons.photo_library),
+                        label: const Text('Gallery'),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  if (_studentImageBytes  != null)
+                    Column(
+                      children: [
+                        if (_studentImageBytes != null)
+                          Column(
+                            children: [
+                              // Image.memory(
+                              //   _studentImageBytes!,
+                              //   height: 50,
+                              //   width: 50,
+                              //   fit: BoxFit.cover,
+                              // ),
+
+                                CircleAvatar(
+                                  radius: 50,
+                                  backgroundColor: Colors.grey.shade200,
+                                  backgroundImage: _studentImageBytes != null
+                                      ? MemoryImage(_studentImageBytes!)
+                                      : null,
+                                  child: _studentImageBytes == null
+                                      ? const Icon(
+                                          Icons.person,
+                                          size: 55,
+                                          color: Colors.grey,
+                                        )
+                                      : null,
+                                ),
+
+                              TextButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _studentImageBytes = null;
+                                    _studentImagePath = null;
+                                  });
+                                },
+                                icon: const Icon(Icons.delete),
+                                label: const Text('Remove Photo'),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
                     ElevatedButton.icon(
-                      onPressed:
-                          _isSaving ? null : _addStudent,
+                      onPressed: _isSaving
+                          ? null
+                          : (_editingStudentId == null
+                              ? _addStudent
+                              : _updateStudent),
                       icon: _isSaving
                           ? const SizedBox(
                               width: 18,
@@ -445,14 +658,41 @@ class _StudentListScreenState extends State<StudentListScreen> {
                                 strokeWidth: 2,
                               ),
                             )
-                          : const Icon(Icons.add),
+                          : Icon(
+                              _editingStudentId == null
+                                  ? Icons.add
+                                  : Icons.save,
+                            ),
                       label: Text(
-                        _isSaving ? 'Adding...' : 'Add Student',
+                        _isSaving
+                            ? 'Saving...'
+                            : (_editingStudentId == null
+                                ? 'Add Student'
+                                : 'Update Student'),
                       ),
                       style: ElevatedButton.styleFrom(
                         minimumSize: const Size.fromHeight(45),
                       ),
                     ),
+
+                    if (_editingStudentId != null)
+                      TextButton.icon(
+                        onPressed: _isSaving
+                            ? null
+                            : () {
+                                setState(() {
+                                  _editingStudentId = null;
+                                  _studentImage = null;
+                                  _studentImageBytes = null;
+                                  _studentImagePath = null;
+                                });
+
+                                _nameController.clear();
+                                _gradeController.clear();
+                              },
+                        icon: const Icon(Icons.close),
+                        label: const Text('Cancel Edit'),
+                      ),
                   ],
                 ),
               ),
@@ -517,24 +757,46 @@ class _StudentListScreenState extends State<StudentListScreen> {
                                   ),
                           child: ListTile(
                             leading: CircleAvatar(
-                                      child: Text(
-                                        student.name.isEmpty
-                                            ? '?'
-                                            : student.name[0]
-                                                .toUpperCase(),
-                                      ),
+                              radius: 25,
+                              backgroundImage: student.imagePath != null
+                                  ? FileImage(File(student.imagePath!))
+                                  : null,
+                              child: student.imagePath == null
+                                  ? Text(
+                                      student.name.isEmpty
+                                          ? '?'
+                                          : student.name[0].toUpperCase(),
+                                    )
+                                  : null,
                             ),
                             title: Text(student.name),
                                     subtitle: Text(
                                       'Grade: ${student.grade}',
                                     ),
-                            trailing: IconButton(
-                                      icon: const Icon(
-                                        Icons.delete,
-                                        color: Colors.red,
-                                      ),
-                                      onPressed: () =>
-                                          _deleteStudent(index),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Edit student',
+                                  icon: const Icon(
+                                    Icons.edit,
+                                    color: Colors.blue,
+                                  ),
+                                  onPressed: _isSaving
+                                      ? null
+                                      : () => _editStudent(student),
+                                ),
+                                IconButton(
+                                  tooltip: 'Delete student',
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: _isSaving
+                                      ? null
+                                      : () => _deleteStudent(index),
+                                ),
+                              ],
                             ),
                           ),
                         );
